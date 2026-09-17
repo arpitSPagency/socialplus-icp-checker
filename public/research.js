@@ -119,6 +119,12 @@ export async function research({ key, model, url, notes, onStatus = () => {}, wa
             if (attempt === 0) { onStatus("Gemini is busy. Retrying…"); await wait(TRANSIENT_WAIT_MS); continue; }
             break;
           }
+          if (e.cause === "format") {
+            // Prose instead of JSON, or an empty answer: ask once more, then
+            // let another model try.
+            if (attempt === 0) { onStatus("Tidying up the answer…"); continue; }
+            break;
+          }
           throw e;
         }
       }
@@ -126,6 +132,7 @@ export async function research({ key, model, url, notes, onStatus = () => {}, wa
   }
   if (quotaHit) throw new Error("The free Gemini quota is used up for now. Try again in a few minutes, or fill in the facts yourself below.");
   if (lastErr?.cause === "transient") throw new Error("Gemini is busy right now. Try again in a minute, or fill in the facts yourself below.");
+  if (lastErr?.cause === "format") throw new Error("The research came back in an unexpected format every time. Try again, or fill in the facts yourself below.");
   throw new Error("No Gemini model is available for this key. " + (lastErr?.message || ""));
 }
 
@@ -167,7 +174,7 @@ async function callModel({ key, model, url, notes, mode, material = [] }) {
   const cand = data.candidates?.[0];
   const text = (cand?.content?.parts || []).map((p) => p.text || "").join("");
   const facts = parseJson(text);
-  if (!facts) throw new Error("The research came back in an unexpected format. Try again.");
+  if (!facts) throw new Error(`The research came back in an unexpected format (${cand?.finishReason || "no answer"}). Try again.`, { cause: "format" });
 
   // Sources: grounding chunks when grounded, plus what the model cited, and
   // never a raw search-results page.

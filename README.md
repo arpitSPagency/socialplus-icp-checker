@@ -2,7 +2,7 @@
 
 A one-page tool, hosted free on GitHub Pages. Paste a company website plus any extra details (founder name, LinkedIn About text, notes) and it tells you which tier the lead is and why.
 
-- **Research:** the page searches DuckDuckGo and reads the LinkedIn company page and funding/press pages through Jina's free reader (`r.jina.ai`, no key), then Gemini reads the website plus that evidence and reports HQ, headcount (LinkedIn band), funding, segment, decision makers and buying triggers. Google Search grounding is not used: it returns 429 on a free Gemini key.
+- **Research:** the page reads the website, the LinkedIn company page, StartupIntros, Bing web and news results and a couple of press pages through Jina's free reader (`r.jina.ai`, no key), then Gemini reads the website plus that evidence and reports HQ, headcount (LinkedIn band), funding, segment, decision makers and buying triggers. Google Search grounding is not used: it returns 429 on a free Gemini key.
 - **Tiering:** fixed rules in `public/tiers.js`, not the AI, so the same facts always give the same tier.
 - **Editable facts:** if the research gets something wrong, fix it on the page and the tier updates instantly.
 
@@ -49,7 +49,7 @@ npx serve public                  # open the page locally (paste your key in the
 ```
 public/index.html      page
 public/app.js          UI logic
-public/gather.js       free web evidence: DuckDuckGo + LinkedIn + press via r.jina.ai (browser-side)
+public/gather.js       free web evidence: site, LinkedIn, StartupIntros, Bing RSS, press via r.jina.ai (browser-side)
 public/research.js     Gemini call, model fallback, quota/503 handling (browser-side)
 public/tiers.js        tier rules (the only place tiers are decided)
 public/config.js       key placeholder, filled by the GitHub Action at deploy
@@ -60,6 +60,6 @@ test/tiers.test.mjs
 ## Limits
 
 - LinkedIn's public company page is read through Jina's reader, which usually shows the employee band and HQ. If LinkedIn or Jina blocks a request, the check still runs on the website and search snippets, and the "Double-check" line says so.
-- Jina's reader is free without a key but rate-limited per IP (about 20 requests a minute). Each check makes 4 to 5 reader calls, so a few checks a minute is fine; a burst is not.
+- Jina's reader is free without a key but rate-limited per IP (about 20 requests a minute). Each check makes 6 to 8 reader calls, so two checks a minute is fine; a burst is not.
 - AI research can be wrong. Check the "Confidence" and "Double-check" lines before outreach.
 - Gemini's free tier has rate limits. If you see a rate-limit message, wait a minute.

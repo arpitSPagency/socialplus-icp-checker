@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluate } from "../public/tiers.js";
 import { parseJson, normalizeUrl, buildPrompt } from "../public/research.js";
-import { ddgLinks, searchDigest, personIn, gather } from "../public/gather.js";
+import { mdLinks, unwrap, searchDigest, personIn, linkedinSlug, guessSlugs, gather } from "../public/gather.js";
 
 // Research tests stub the browser-side evidence gathering so the mocked fetch
 // only ever sees Gemini calls.
@@ -140,35 +140,79 @@ Cal.com | 5,000 followers. Company size 11-50 employees.
 [![Image 3](https://external-content.duckduckgo.com/ip3/x.ico)](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fcal%2Dcom%2F&rut=abc)
 [Cal.com Funding | StartupIntros](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fstartupintros.com%2Forgs%2Fcal%2Dcom&rut=def)
 [Cal.com - Crunchbase](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.crunchbase.com%2Forganization%2Fcal%2Dcom&rut=ghi)`;
-test("ddgLinks decodes result targets and drops duplicates and icons", () => {
-  assert.deepEqual(ddgLinks(DDG_MD), [
-    { title: "Cal.com | LinkedIn", href: "https://www.linkedin.com/company/cal-com/" },
-    { title: "Cal.com Funding | StartupIntros", href: "https://startupintros.com/orgs/cal-com" },
-    { title: "Cal.com - Crunchbase", href: "https://www.crunchbase.com/organization/cal-com" },
+const BING_MD = `### [Cal.com: Funding, Team & Investors | Startup Intros](https://startupintros.com/orgs/cal-com)
+Cal.com has raised $32.0M across 2 funding rounds.
+[https://startupintros.com/orgs/cal-com](https://startupintros.com/orgs/cal-com)
+### [California - Wikipedia](https://en.wikipedia.org/wiki/California)
+### [Cal.com (company) - Wikipedia](https://en.wikipedia.org/wiki/Cal.com_(company))
+### [Open source Calendly rival Cal.com raises $25M](http://www.bing.com/news/apiclick.aspx?ref=FexRss&url=https%3a%2f%2fventurebeat.com%2fcal-com-raises-25m&c=1)
+Fri, 15 Apr 2022 12:06:00 GMT`;
+test("mdLinks decodes DuckDuckGo and Bing wrappers, keeps parenthesised URLs, drops icons and bare URLs", () => {
+  assert.deepEqual(mdLinks(DDG_MD).map((l) => l.href), ["https://www.linkedin.com/company/cal-com/", "https://startupintros.com/orgs/cal-com", "https://www.crunchbase.com/organization/cal-com"]);
+  assert.deepEqual(mdLinks(BING_MD), [
+    { title: "Cal.com: Funding, Team & Investors | Startup Intros", href: "https://startupintros.com/orgs/cal-com" },
+    { title: "California - Wikipedia", href: "https://en.wikipedia.org/wiki/California" },
+    { title: "Cal.com (company) - Wikipedia", href: "https://en.wikipedia.org/wiki/Cal.com_(company)" },
+    { title: "Open source Calendly rival Cal.com raises $25M", href: "https://venturebeat.com/cal-com-raises-25m" },
   ]);
+  assert.equal(unwrap("https://www.bing.com/search?q=x"), null);
 });
-test("searchDigest keeps titles, snippets and real targets", () => {
-  const d = searchDigest(DDG_MD);
-  assert.match(d, /Cal\.com \| LinkedIn <https:\/\/www\.linkedin\.com\/company\/cal-com\/>/);
-  assert.match(d, /Company size 11-50/); assert.doesNotMatch(d, /duckduckgo\.com\/l\//); assert.doesNotMatch(d, /Image 3/);
+test("searchDigest keeps titles, snippets, dates and real targets", () => {
+  const d = searchDigest(BING_MD);
+  assert.match(d, /Startup Intros <https:\/\/startupintros\.com\/orgs\/cal-com>/);
+  assert.match(d, /raises \$25M <https:\/\/venturebeat\.com\/cal-com-raises-25m>/);
+  assert.match(d, /15 Apr 2022/); assert.doesNotMatch(d, /apiclick/);
+  assert.doesNotMatch(searchDigest(DDG_MD), /Image 3|duckduckgo\.com\/l\//);
 });
 test("personIn finds a named founder in notes", () => {
   assert.equal(personIn("Founder: Jane Doe, ex-Stripe"), "Jane Doe");
   assert.equal(personIn("nothing here"), null);
 });
-test("gather opens LinkedIn first, skips blocked hosts, quotes the domain", async () => {
+test("linkedinSlug and guessSlugs", () => {
+  assert.equal(linkedinSlug("Follow us: https://www.linkedin.com/company/lovable-dev/ and X"), "lovable-dev");
+  assert.equal(linkedinSlug("no link"), null);
+  assert.deepEqual(guessSlugs("cal.com"), ["cal-com", "cal"]);
+});
+test("gather: site -> LinkedIn slug -> LinkedIn page, StartupIntros, named funding pages, news", async () => {
   const fetched = [];
-  const fetchText = async (u) => { fetched.push(u); return /duckduckgo/.test(u) ? DDG_MD : "Company size 11-50 employees. Headquarters San Francisco. ".repeat(10); };
+  const fetchText = async (u) => {
+    fetched.push(u);
+    if (u === "https://cal.com/") return "Cal.com scheduling. Follow https://www.linkedin.com/company/cal-com on LinkedIn. ".repeat(5);
+    if (/linkedin\.com\/company\/cal-com$/.test(u)) return "Cal.com | LinkedIn. Company size 11-50 employees. Headquarters San Francisco. ".repeat(5);
+    if (/startupintros\.com\/orgs\/cal-com$/.test(u)) return "Cal.com has raised $32.0M across 2 funding rounds. Most recently Series A April 2022. ".repeat(5);
+    if (/bing\.com\/news/.test(u)) return BING_MD;
+    if (/bing\.com\/search/.test(u)) return BING_MD;
+    if (/wikipedia\.org\/wiki\/Cal\.com_\(company\)/.test(u)) return "Cal.com is a company. ".repeat(20);
+    throw new Error("unexpected " + u);
+  };
   const r = await gather({ url: "https://cal.com/", notes: "", fetchText });
-  assert.match(fetched[0], /%22cal\.com%22/);
-  assert.deepEqual(fetched.filter((u) => !/duckduckgo/.test(u)), ["https://www.linkedin.com/company/cal-com/", "https://startupintros.com/orgs/cal-com"]);
-  assert.equal(r.material[0].url, "https://www.linkedin.com/company/cal-com/");
-  assert.equal(r.sources.length, 2);
-  assert.ok(r.material.some((m) => /^Search results:/.test(m.title)));
+  assert.equal(r.linkedin, "https://www.linkedin.com/company/cal-com");
+  assert.ok(!fetched.some((u) => /linkedin\.com\/company\/cal$/.test(u)), "no slug guessing when the site links LinkedIn");
+  assert.ok(!fetched.some((u) => /wiki\/California/.test(u)), "California is not the company");
+  assert.ok(!fetched.some((u) => /duckduckgo/.test(u)), "no DuckDuckGo when Bing answered");
+  assert.deepEqual(r.material.map((m) => m.title.split(":")[0]), ["Website", "LinkedIn", "StartupIntros", "Cal.com (company) - Wikipedia", "Search results", "News headlines matching \"cal.com\" (check the company name matches)"]);
+  assert.deepEqual(r.sources.map((s) => s.uri), ["https://www.linkedin.com/company/cal-com", "https://startupintros.com/orgs/cal-com", "https://en.wikipedia.org/wiki/Cal.com_(company)"]);
+});
+test("gather guesses the LinkedIn slug and falls back to DuckDuckGo, skipping a bot challenge", async () => {
+  const fetched = [];
+  const fetchText = async (u) => {
+    fetched.push(u);
+    if (u === "https://acme.io/") return "Acme makes widgets. ".repeat(20);
+    if (/linkedin\.com\/company\/acme-io$/.test(u)) throw new Error("404");
+    if (/linkedin\.com\/company\/acme$/.test(u)) return "Acme | LinkedIn. acme.io. Company size 2-10 employees. ".repeat(5);
+    if (/startupintros/.test(u)) return "";
+    if (/bing\.com/.test(u)) return "";
+    if (/duckduckgo/.test(u)) return "Unfortunately, bots use DuckDuckGo too. Please complete the following challenge. Select all squares containing a duck.";
+    throw new Error("unexpected " + u);
+  };
+  const r = await gather({ url: "https://acme.io/", notes: "", fetchText });
+  assert.equal(r.linkedin, "https://www.linkedin.com/company/acme");
+  assert.ok(fetched.some((u) => /duckduckgo/.test(u)));
+  assert.deepEqual(r.material.map((m) => m.title.split(":")[0]), ["Website", "LinkedIn"]);
 });
 test("gather survives a dead reader", async () => {
   const r = await gather({ url: "https://cal.com/", notes: "", fetchText: async () => { throw new Error("429"); } });
-  assert.deepEqual(r, { material: [], sources: [] });
+  assert.deepEqual(r, { material: [], sources: [], linkedin: null });
 });
 test("short rate limit waits and retries same model", async () => {
   const { research } = await import("../public/research.js");

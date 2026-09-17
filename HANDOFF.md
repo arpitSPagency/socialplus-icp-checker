@@ -22,9 +22,11 @@ login and no key.
 
 ```
 Browser (static page on GitHub Pages)
-  ├─ public/gather.js    → free evidence, no key: DuckDuckGo results, the LinkedIn
-  │                        company page and 2 funding/press pages, all read through
-  │                        https://r.jina.ai/<url> (CORS-enabled, free, ~20 req/min/IP)
+  ├─ public/gather.js    → free evidence, no key, all through https://r.jina.ai/<url>
+  │                        (CORS-enabled, free, ~20 req/min/IP): the website, the LinkedIn
+  │                        company page (slug taken from the site's own LinkedIn link),
+  │                        StartupIntros by that slug, Bing web RSS + Bing News RSS, and
+  │                        up to 2 press pages whose title names the company
   ├─ public/research.js  → Gemini reads the website (url_context) + that evidence,
   │                        returns FACTS only (JSON). Model fallback, quota/503 handling.
   ├─ public/tiers.js     → fixed rules turn facts into a tier (no AI in this step)
@@ -36,9 +38,12 @@ free key that tool returns 429 on *every* model (verified with direct API calls 
 `gemini-2.5-*` are retired for new users (404). The page then died on a transient 503 because
 anything that wasn't 429/404 was treated as fatal. Gemini's own `url_context` fetcher is also
 blocked by every search engine after a few hits, so search-result pages cannot be handed to it
-directly. Jina's reader is the piece that works: verified reading `html.duckduckgo.com` results,
-`linkedin.com/company/<slug>` (public view shows "Company size 11-50", HQ) and StartupIntros /
-press pages. Crunchbase, Tracxn, PitchBook and ZoomInfo come back empty or nav-only and are skipped.
+directly. Jina's reader is the piece that works: verified reading `linkedin.com/company/<slug>`
+(public view shows "Company size 11-50", HQ), StartupIntros, Wikipedia, Forbes, press, and Bing's
+RSS feeds (`bing.com/search?format=rss`, `bing.com/news/search?format=rss`; the JSON reader mode
+is needed for RSS). DuckDuckGo through the reader hits a bot challenge within a few requests, so it
+is only a last fallback with challenge detection. Brave, Mojeek, Startpage, Google News RSS all fail.
+Crunchbase, Tracxn, PitchBook and ZoomInfo come back empty or nav-only and are skipped.
 
 - There is no server. Netlify was tried first and dropped: it was unreliable, and Arpit prefers GitHub Pages.
 - The Gemini key comes from the repo secret `GEMINI_API_KEY`. The workflow
@@ -60,7 +65,7 @@ press pages. Crunchbase, Tracxn, PitchBook and ZoomInfo come back empty or nav-o
 | `public/style.css` | Styles (light/dark) |
 | `.github/workflows/pages.yml` | Test → inject key → deploy Pages |
 | `public/gather.js` | Free evidence: DDG + LinkedIn + press via r.jina.ai |
-| `test/tiers.test.mjs` | 41 tests (`npm test`, Node 22, no deps) |
+| `test/tiers.test.mjs` | 43 tests (`npm test`, Node 22, no deps) |
 
 ## Tier rules (set by Arpit, 17 Sep 2026)
 
@@ -100,9 +105,14 @@ To change a rule, edit `public/tiers.js`, add or adjust tests, run `npm test`, t
   "free AI lookup is busy" message, so the user always gets a tier.
 - A bad key (400) or website-restriction refusal (403) is shown immediately, with no retry.
 
-Verified 17 Sep 2026 (evening) from Node and in Chrome against the served page:
-cal.com → B (LinkedIn 11-50, Series A Apr 2022, 5 sources); fyle.in → C (India);
-mischf.com (a GoDaddy placeholder) → low confidence, no invented facts.
+- Prose instead of JSON: retry once, then next model (was fatal).
+- `gemini-3.6-flash` free quota is 20 requests/day (`generate_content_free_tier_requests`); the
+  fallback list absorbs that, and most real checks land on `gemini-3-flash-preview`.
+
+Verified 17 Sep 2026 (evening) from Node and in Chrome:
+cal.com → B (LinkedIn 11-50, Series A Apr 2022); lovable.dev → A (LinkedIn 51-200, Stockholm,
+Series C Aug 2026, 6 sources, 15s); fyle.in → C (India); mischf.com (a GoDaddy placeholder) →
+low confidence, no invented facts.
 
 ## Decisions already made (don't reopen without Arpit)
 
@@ -141,7 +151,6 @@ npm test
 git add -A && git commit -m "..."
 git push origin main          # remote: https://arpitSPagency@github.com/arpitSPagency/socialplus-icp-checker.git
 ```
-Pushing needs a credential for the **arpitSPagency** account. The Mac's keychain holds a different
-account (`reachforarpit-bit`), which gets a 403. Use a fine-grained token scoped to this repo, or `gh auth login` as
-arpitSPagency. After pushing, check the **Actions** tab for a green "Deploy to GitHub Pages" run, then hard-refresh
+`reachforarpit-bit` (the account `gh` is logged in as on this Mac) was added as a collaborator on
+17 Sep 2026, and the repo's git config uses `gh auth git-credential`, so `git push` just works. After pushing, check the **Actions** tab for a green "Deploy to GitHub Pages" run, then hard-refresh
 the site with Cmd+Shift+R.
