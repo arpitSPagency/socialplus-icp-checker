@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Social+ ICP Checker</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div class="brand">Social<span>+</span></div>
+      <h1>ICP Checker</h1>
+      <p class="sub">Paste a company website and anything else you know. You get the tier and the reasons behind it.</p>
+    </header>
+
+    <form id="form" class="card" autocomplete="off">
+      <label for="url">Company website</label>
+      <input id="url" name="url" type="text" inputmode="url" placeholder="acme.com">
+
+      <label for="notes">Anything else <span class="muted">(optional)</span></label>
+      <textarea id="notes" name="notes" rows="4" placeholder="Founder name, LinkedIn About text, what they asked for, budget hints…"></textarea>
+
+      <div id="codeRow" class="hidden">
+        <label for="code">Team access code</label>
+        <input id="code" name="code" type="password" placeholder="Ask Arpit">
+      </div>
+
+      <button id="go" type="submit">Check tier</button>
+      <p id="status" class="status" role="status"></p>
+    </form>
+
+    <section id="result" class="hidden" aria-live="polite">
+      <div class="card verdict" id="verdict">
+        <div class="badge" id="tierBadge">–</div>
+        <div>
+          <div class="company" id="company"></div>
+          <div class="label" id="tierLabel"></div>
+          <div class="action" id="tierAction"></div>
+        </div>
+      </div>
+
+      <div class="card" id="flagsCard">
+        <h2>Flags</h2>
+        <ul id="flags" class="flags"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Why this tier</h2>
+        <table class="checks"><tbody id="checks"></tbody></table>
+      </div>
+
+      <div class="card">
+        <h2>Facts <span class="muted">(fix anything wrong. The tier updates instantly.)</span></h2>
+        <div class="grid" id="facts">
+          <label>HQ country<input data-f="hq_country" type="text"></label>
+          <label>Employees (min)<input data-f="employees_min" type="number" min="0"></label>
+          <label>Employees (max)<input data-f="employees_max" type="number" min="0"></label>
+          <label>Total raised (USD)<input data-f="funding_usd" type="number" min="0" step="100000"></label>
+          <label>Segment<input data-f="segment" type="text"></label>
+          <label class="check"><input data-f="segment_fit" type="checkbox"> Core segment</label>
+          <label class="check"><input data-f="tiny_operation" type="checkbox"> 1–5 person / transactional</label>
+          <label class="check"><input data-f="low_budget" type="checkbox"> Budget under $500/mo (₹40K)</label>
+        </div>
+        <dl class="extra" id="extra"></dl>
+      </div>
+
+      <div class="card">
+        <h2>Sources</h2>
+        <ul id="sources" class="sources"></ul>
+        <button type="button" id="copy" class="ghost">Copy summary</button>
+      </div>
+    </section>
+
+    <details class="card guide">
+      <summary>Tier guide</summary>
+      <ul>
+        <li><b>Tier A:</b> US, UK, Canada, Australia, UAE or EU, with up to 50 employees. Core segments: SaaS, AI-native, DTC/e-commerce, hospitality, real estate, health/fintech, B2B.</li>
+        <li><b>Tier B:</b> same markets, 51–200 employees. Over 200 is still B, but it's above profile and needs Nikita's sign-off.</li>
+        <li><b>Tier C:</b> India.</li>
+        <li><b>Tier D:</b> decline politely and never chase. That means a 1–5 person operation, no strategy, a transactional ask, or a budget under $500/mo (₹40K).</li>
+        <li>Borderline cases go to Nikita: other countries, non-core segments, or unconfirmed facts.</li>
+      </ul>
+      <p class="muted">Research is AI-assisted and can be wrong. Check the facts before outreach.</p>
+    </details>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

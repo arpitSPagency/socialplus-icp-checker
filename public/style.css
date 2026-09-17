@@ -1,0 +1,72 @@
+:root {
+  --bg: #f6f5f1; --card: #ffffff; --ink: #16161a; --muted: #6b6b76; --line: #e4e2dc;
+  --accent: #ff4f2e; --accent-ink: #ffffff;
+  --a: #1f9d55; --b: #2f6fdf; --c: #b7791f; --d: #c53030; --none: #8a8a93;
+  --soft-warn: #fff6e5; --warn-ink: #7a4b00;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111114; --card: #1b1b20; --ink: #f1f0ec; --muted: #a0a0aa; --line: #2d2d34;
+    --soft-warn: #2e2412; --warn-ink: #f5c36b;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, sans-serif; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+.top { margin-bottom: 20px; }
+.brand { font-weight: 700; letter-spacing: -.02em; font-size: 18px; }
+.brand span { color: var(--accent); }
+h1 { font-size: 30px; margin: 6px 0 4px; letter-spacing: -.02em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+h2 .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.sub, .muted { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+label { display: block; font-weight: 500; margin: 0 0 6px; }
+input[type=text], input[type=number], input[type=password], textarea {
+  width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;
+}
+input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 18px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button:disabled { opacity: .6; cursor: progress; }
+button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); margin-top: 8px; }
+.status { min-height: 1.5em; margin: 10px 0 0; color: var(--muted); }
+.status.err { color: var(--d); }
+.hidden { display: none !important; }
+
+.verdict { display: flex; gap: 18px; align-items: center; }
+.badge { flex: none; width: 76px; height: 76px; border-radius: 16px; display: grid; place-items: center;
+  font-size: 40px; font-weight: 700; color: #fff; background: var(--none); }
+.badge.A { background: var(--a); } .badge.B { background: var(--b); } .badge.C { background: var(--c); } .badge.D { background: var(--d); }
+.company { font-size: 20px; font-weight: 700; }
+.label { font-weight: 600; }
+.action { color: var(--muted); }
+
+.flags { margin: 0; padding: 0; list-style: none; }
+.flags li { background: var(--soft-warn); color: var(--warn-ink); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; }
+
+.checks { width: 100%; border-collapse: collapse; }
+.checks td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.checks tr:first-child td { border-top: 0; }
+.checks td:first-child { width: 26px; }
+.checks .p { font-weight: 600; white-space: nowrap; }
+.checks .n { color: var(--muted); font-size: 13px; }
+.ok { color: var(--a); } .no { color: var(--d); } .unk { color: var(--none); }
+
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.grid label { font-size: 13px; color: var(--muted); font-weight: 500; }
+.grid input[type=text], .grid input[type=number] { margin-top: 4px; }
+.grid .check { display: flex; gap: 8px; align-items: center; color: var(--ink); margin-bottom: 12px; font-size: 14px; }
+.extra { margin: 8px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; }
+.extra dt { color: var(--muted); font-size: 13px; }
+.extra dd { margin: 0; }
+.sources { margin: 0; padding-left: 18px; }
+.sources a { color: var(--ink); }
+.guide summary { cursor: pointer; font-weight: 600; }
+.guide li { margin-bottom: 6px; }
+@media (max-width: 520px) {
+  .grid { grid-template-columns: 1fr; }
+  .verdict { align-items: flex-start; }
+  .badge { width: 60px; height: 60px; font-size: 32px; }
+  .extra { grid-template-columns: 1fr; }
+}
