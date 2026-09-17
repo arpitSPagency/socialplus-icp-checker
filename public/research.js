@@ -40,11 +40,30 @@ Return ONLY a JSON object, no prose, no code fences:
 }`;
 }
 
-export async function research({ key, model = "gemini-2.5-flash", url, notes }) {
+// Google retires model names regularly. Try the configured one first, then
+// newer/alias names, so a retirement doesn't take the tool down.
+export const FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3-flash", "gemini-2.5-flash"];
+const RETIRED = /no longer available|not found|is not supported|not available|deprecated|unknown model/i;
+
+export async function research({ key, model, url, notes }) {
   url = normalizeUrl(url);
   notes = String(notes || "").slice(0, 8000);
   if (!url && notes.trim().length < 3) throw new Error("Paste a website or some details first.");
 
+  const models = [...new Set([model, ...FALLBACK_MODELS].filter(Boolean))];
+  let lastErr;
+  for (const m of models) {
+    try {
+      return { ...(await callModel({ key, model: m, url, notes })), model: m };
+    } catch (e) {
+      lastErr = e;
+      if (e.cause !== "retired") throw e;
+    }
+  }
+  throw new Error("No Gemini model is available for this key. " + (lastErr?.message || ""));
+}
+
+async function callModel({ key, model, url, notes }) {
   const tools = [{ google_search: {} }];
   if (url) tools.push({ url_context: {} });
 
@@ -56,9 +75,8 @@ export async function research({ key, model = "gemini-2.5-flash", url, notes }) 
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: buildPrompt({ url, notes }) }] }],
         tools,
-        generationConfig: { temperature: 0.1 },
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(90000),
     });
   } catch (e) {
     throw new Error(e.name === "TimeoutError" ? "Research took too long. Try again." : "Couldn't reach Gemini. Check your connection.");
@@ -67,6 +85,7 @@ export async function research({ key, model = "gemini-2.5-flash", url, notes }) 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data?.error?.message || `Gemini error ${res.status}`;
+    if (res.status === 404 || RETIRED.test(msg)) throw new Error(msg, { cause: "retired" });
     if (res.status === 429) throw new Error("Gemini rate limit hit. Wait a minute and retry.");
     if (res.status === 400 && /API key/i.test(msg)) throw new Error("The Gemini API key is invalid.", { cause: "badKey" });
     if (res.status === 403) throw new Error("The Gemini key refused this site. Check the key's website restriction includes this page's address.", { cause: "badKey" });

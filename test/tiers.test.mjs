@@ -45,3 +45,27 @@ test("prompt includes url and notes", () => {
   const p = buildPrompt({ url: "https://acme.com/", notes: "Founder Jane" });
   assert.match(p, /acme\.com/); assert.match(p, /Founder Jane/);
 });
+
+test("research falls back when a model is retired", async () => {
+  const { research } = await import("../public/research.js");
+  const tried = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    const m = decodeURIComponent(String(u).match(/models\/([^:]+):/)[1]);
+    tried.push(m);
+    if (m === "gemini-2.5-flash") return new Response(JSON.stringify({ error: { message: "This model models/gemini-2.5-flash is no longer available to new users." } }), { status: 404 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"X","hq_country":"India"}' }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await research({ key: "k", model: "gemini-2.5-flash", url: "x.com" });
+    assert.equal(r.facts.company, "X");
+    assert.deepEqual(tried, ["gemini-2.5-flash", "gemini-3.6-flash"]);
+  } finally { globalThis.fetch = real; }
+});
+test("research does not retry on a bad key", async () => {
+  const { research } = await import("../public/research.js");
+  let n = 0; const real = globalThis.fetch;
+  globalThis.fetch = async () => { n++; return new Response(JSON.stringify({ error: { message: "API key not valid" } }), { status: 400 }); };
+  try { await assert.rejects(research({ key: "k", url: "x.com" }), /invalid/); assert.equal(n, 1); }
+  finally { globalThis.fetch = real; }
+});
