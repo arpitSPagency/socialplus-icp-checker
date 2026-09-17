@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tier tests
+        run: npm test
+
+      - name: Inject Gemini key from repo secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const k = process.env.GEMINI_API_KEY || "";
+            if (!k) console.log("::warning::GEMINI_API_KEY secret is not set. The page will ask each visitor for a key.");
+            const p = "public/config.js";
+            fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(/GEMINI_API_KEY = ".*?"/, "GEMINI_API_KEY = " + JSON.stringify(k)));
+          '
+          touch public/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - uses: actions/deploy-pages@v4

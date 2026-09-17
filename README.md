@@ -1,11 +1,10 @@
 # Social+ ICP Checker
 
-A one-page tool for the Social+ team. Paste a company website plus any extra details (founder name, LinkedIn About text, notes) and it tells you which tier the lead is and why.
+A one-page tool, hosted free on GitHub Pages. Paste a company website plus any extra details (founder name, LinkedIn About text, notes) and it tells you which tier the lead is and why.
 
-- **Research:** Gemini with Google Search finds HQ, headcount (LinkedIn band), funding, segment, decision makers and buying triggers.
+- **Research:** Gemini reads the website and uses Google Search to find HQ, headcount (LinkedIn band), funding, segment, decision makers and buying triggers.
 - **Tiering:** fixed rules in `public/tiers.js`, not the AI, so the same facts always give the same tier.
 - **Editable facts:** if the research gets something wrong, fix it on the page and the tier updates instantly.
-- **No key for teammates:** the Gemini key lives on the server (Netlify), never in the browser.
 
 ## Tiers
 
@@ -16,50 +15,49 @@ A one-page tool for the Social+ team. Paste a company website plus any extra det
 | **C** | India | India approach |
 | **D** | 1–5 person op, transactional, no strategy, or budget < $500/mo (₹40K) | Decline politely, never chase |
 
-Rules are checked in order: **D first** (any country), then **India → C**, then the international size bands. These go to Nikita as borderline: countries outside the list, non-core segments, and unconfirmed headcount or HQ. Core segments are SaaS, AI-native, DTC/e-commerce, hospitality, real estate, health/fintech and B2B.
+Rules are checked in order: **D first** (any country), then **India → C**, then the international size bands. These go to Nikita as borderline: countries outside the list, non-core segments, and unconfirmed headcount or HQ.
 
 To change a rule, edit `public/tiers.js`, run `npm test`, and push.
 
-## Deploy (one time, about 10 minutes)
+## Deploy on GitHub Pages
 
-1. **Push to GitHub.** Create a private repo, e.g. `socialplus-icp-checker`, then:
+1. **Create the repo.** On github.com/new, name it `socialplus-icp-checker` and set it to **Public**. GitHub Pages is free only for public repos. Your key is not stored in the code.
+2. **Push:**
    ```
-   git remote add origin https://github.com/<you>/socialplus-icp-checker.git
+   cd ~/socialplus/icp-tool
+   git remote add origin https://github.com/YOUR-USERNAME/socialplus-icp-checker.git
    git push -u origin main
    ```
-2. **Connect Netlify.** app.netlify.com → Add new site → Import from Git → pick the repo. Leave the build command empty. The publish directory is already set by `netlify.toml`.
-3. **Add environment variables** (Site configuration → Environment variables):
-   - `GEMINI_API_KEY`: from https://aistudio.google.com/apikey
-   - `ACCESS_CODE`: leave unset so the link is open to anyone. Set it only if you later want a passcode.
-   - `GEMINI_MODEL` (optional): defaults to `gemini-2.5-flash`
-4. **Redeploy** (Deploys → Trigger deploy). Share the Netlify URL.
+3. **Turn on Pages:** repo → **Settings → Pages** → Source: **GitHub Actions**.
+4. **Add the key:** repo → **Settings → Secrets and variables → Actions → New repository secret** → Name `GEMINI_API_KEY`, Secret = your key from https://aistudio.google.com/apikey.
+5. **Deploy:** repo → **Actions → Deploy to GitHub Pages → Run workflow**. After about a minute the site is at `https://YOUR-USERNAME.github.io/socialplus-icp-checker/`.
+6. **Lock the key to your site (important).** The key has to be sent from the browser, so anyone who looks can see it. Restrict it so it only works on your page: https://console.cloud.google.com/apis/credentials → click the key → **Application restrictions: Websites** → add `https://YOUR-USERNAME.github.io/*` → **Save**.
 
-After that, every `git push` to `main` redeploys automatically.
+After that, every push to `main` re-deploys automatically.
 
-> **Why not GitHub Pages?** Pages only serves static files, so it has nowhere to keep the Gemini key secret. GitHub holds the code and Netlify runs it.
+If the secret isn't set, the page still works. It just asks each visitor for their own Gemini key and saves it in their browser.
 
 ## Local development
 
 ```
-npm test                  # tier rule tests
-npx netlify-cli dev       # runs the page + /api/qualify at localhost:8888
+npm test                          # tier rule tests
+npx serve public                  # open the page locally (paste your key in the box)
 ```
-
-For local runs, put `GEMINI_API_KEY=...` in a `.env` file. It's git-ignored.
 
 ## Files
 
 ```
-public/index.html                   page
-public/app.js                       UI logic
-public/tiers.js                     tier rules (the only place tiers are decided)
-public/style.css
-netlify/edge-functions/qualify.js   /api/qualify: website read + Gemini research
+public/index.html      page
+public/app.js          UI logic
+public/research.js     Gemini research (browser-side)
+public/tiers.js        tier rules (the only place tiers are decided)
+public/config.js       key placeholder, filled by the GitHub Action at deploy
+.github/workflows/pages.yml
 test/tiers.test.mjs
 ```
 
 ## Limits
 
-- LinkedIn isn't read directly because it needs a login. Headcount comes from search results about the LinkedIn page, or from text you paste into the notes box.
+- LinkedIn isn't read directly because it needs a login. Headcount comes from search results, or from text you paste into the notes box.
 - AI research can be wrong. Check the "Confidence" and "Double-check" lines before outreach.
 - Gemini's free tier has rate limits. If you see a rate-limit message, wait a minute.

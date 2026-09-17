@@ -1,4 +1,6 @@
 import { evaluate, fmtUSD } from "./tiers.js";
+import { research } from "./research.js";
+import { GEMINI_API_KEY, GEMINI_MODEL } from "./config.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -9,8 +11,12 @@ const store = {
 let facts = null;
 let sources = [];
 
-const savedCode = store.get("icp-code");
-if (savedCode) { $("code").value = savedCode; $("codeRow").classList.remove("hidden"); }
+// Key comes from the deployed config. If none was deployed, each visitor can use their own.
+const builtInKey = GEMINI_API_KEY;
+if (!builtInKey) {
+  $("codeRow").classList.remove("hidden");
+  $("code").value = store.get("icp-gemini-key") || "";
+}
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -24,21 +30,13 @@ $("form").addEventListener("submit", async (e) => {
   const timer = setInterval(() => status(steps[Math.min(++i, steps.length - 1)]), 5000);
 
   try {
-    const code = $("code").value.trim();
-    const res = await fetch("/api/qualify", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, notes, code }),
-    });
-    const data = await res.json().catch(() => ({ error: "The server returned an unexpected response." }));
-    if (!res.ok) {
-      if (data.needCode) { $("codeRow").classList.remove("hidden"); $("code").focus(); }
-      throw new Error(data.error || `Error ${res.status}`);
-    }
-    if (code) store.set("icp-code", code);
+    const key = builtInKey || $("code").value.trim();
+    if (!key) { $("code").focus(); throw new Error("Add a Gemini API key first."); }
+    const data = await research({ key, model: GEMINI_MODEL, url, notes });
+    if (!builtInKey) store.set("icp-gemini-key", key);
     facts = data.facts; sources = data.sources || [];
     fillFacts(); render();
-    status(data.siteRead || !url ? "" : "Couldn't open the website directly, so search results were used.");
+    status("");
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     status(err.message, true);

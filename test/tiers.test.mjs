@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluate } from "../public/tiers.js";
-import { parseJson, normalizeUrl, htmlToText } from "../netlify/edge-functions/qualify.js";
+import { parseJson, normalizeUrl, buildPrompt } from "../public/research.js";
 
 const base = { hq_country: "United States", employees_min: 11, employees_max: 50, funding_usd: 3e6, segment: "SaaS", segment_fit: true, tiny_operation: false, low_budget: false };
 const t = (over) => evaluate({ ...base, ...over });
@@ -41,7 +41,7 @@ test("normalizeUrl", () => {
   assert.equal(normalizeUrl("acme.com"), "https://acme.com/");
   assert.equal(normalizeUrl("hello"), null);
 });
-test("htmlToText strips scripts", () => {
-  const s = htmlToText("<title>Acme</title><script>bad()</script><p>We build&nbsp;things</p>");
-  assert.match(s, /Title: Acme/); assert.doesNotMatch(s, /bad/); assert.match(s, /We build things/);
+test("prompt includes url and notes", () => {
+  const p = buildPrompt({ url: "https://acme.com/", notes: "Founder Jane" });
+  assert.match(p, /acme\.com/); assert.match(p, /Founder Jane/);
 });
