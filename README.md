@@ -30,9 +30,9 @@ To change a rule, edit `public/tiers.js`, run `npm test`, and push.
 2. **Connect Netlify.** app.netlify.com → Add new site → Import from Git → pick the repo. Leave the build command empty. The publish directory is already set by `netlify.toml`.
 3. **Add environment variables** (Site configuration → Environment variables):
    - `GEMINI_API_KEY`: from https://aistudio.google.com/apikey
-   - `ACCESS_CODE`: any team passcode. Recommended, so strangers can't spend the key.
+   - `ACCESS_CODE`: leave unset so the link is open to anyone. Set it only if you later want a passcode.
    - `GEMINI_MODEL` (optional): defaults to `gemini-2.5-flash`
-4. **Redeploy** (Deploys → Trigger deploy). Share the Netlify URL and the access code with the team.
+4. **Redeploy** (Deploys → Trigger deploy). Share the Netlify URL.
 
 After that, every `git push` to `main` redeploys automatically.
 
