@@ -69,3 +69,31 @@ test("research does not retry on a bad key", async () => {
   try { await assert.rejects(research({ key: "k", url: "x.com" }), /invalid/); assert.equal(n, 1); }
   finally { globalThis.fetch = real; }
 });
+
+test("quota on one model falls through to the next", async () => {
+  const { research } = await import("../public/research.js");
+  const tried = []; const real = globalThis.fetch;
+  globalThis.fetch = async (u, o) => {
+    const m = decodeURIComponent(String(u).match(/models\/([^:]+):/)[1]);
+    const search = JSON.parse(o.body).tools?.some((t) => t.google_search);
+    tried.push(m + (search ? "+s" : ""));
+    if (search) return new Response(JSON.stringify({ error: { message: "Quota exceeded, limit: 0", details: [{ retryDelay: "5s" }] } }), { status: 429 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"Y"}' }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "y.com", wait: async () => {} });
+    assert.equal(r.facts.company, "Y"); assert.equal(r.searched, false);
+    assert.equal(tried[0], "gemini-3.6-flash+s"); assert.equal(tried.at(-1), "gemini-3.6-flash");
+  } finally { globalThis.fetch = real; }
+});
+test("short rate limit waits and retries same model", async () => {
+  const { research } = await import("../public/research.js");
+  let n = 0; let waited = 0; const real = globalThis.fetch;
+  globalThis.fetch = async () => (++n === 1
+    ? new Response(JSON.stringify({ error: { message: "Resource exhausted", details: [{ retryDelay: "3s" }] } }), { status: 429 })
+    : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"Z"}' }] } }] }), { status: 200 }));
+  try {
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "z.com", wait: async (ms) => { waited = ms; } });
+    assert.equal(r.facts.company, "Z"); assert.equal(waited, 3000); assert.equal(n, 2); assert.ok(r.searched);
+  } finally { globalThis.fetch = real; }
+});

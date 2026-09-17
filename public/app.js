@@ -27,14 +27,16 @@ $("form").addEventListener("submit", async (e) => {
   $("go").disabled = true;
   const steps = ["Reading the website…", "Searching LinkedIn, Crunchbase and press…", "Checking headcount and funding…", "Almost there…"];
   let i = 0; status(steps[0]);
-  const timer = setInterval(() => status(steps[Math.min(++i, steps.length - 1)]), 5000);
+  var timer = setInterval(() => status(steps[Math.min(++i, steps.length - 1)]), 5000);
 
   try {
     const key = builtInKey || $("code").value.trim();
     if (!key) { $("code").focus(); throw new Error("Add a Gemini API key first."); }
-    const data = await research({ key, model: GEMINI_MODEL, url, notes });
+    const data = await research({ key, model: GEMINI_MODEL, url, notes, onStatus: (m) => { clearInterval(timer); status(m); } });
+    if (!data.searched) sources = [];
     if (!builtInKey) store.set("icp-gemini-key", key);
     facts = data.facts; sources = data.sources || [];
+    if (!data.searched) facts.notes = [facts.notes, "Google Search quota was busy, so this used the website only. Double-check headcount and funding."].filter(Boolean).join(" ");
     fillFacts(); render();
     status("");
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });

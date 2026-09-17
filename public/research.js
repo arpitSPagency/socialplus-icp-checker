@@ -40,31 +40,54 @@ Return ONLY a JSON object, no prose, no code fences:
 }`;
 }
 
-// Google retires model names regularly. Try the configured one first, then
-// newer/alias names, so a retirement doesn't take the tool down.
-export const FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3-flash", "gemini-2.5-flash"];
+// Google retires model names regularly, and free-tier quotas differ per model
+// (some are 0). Try models in order; on "retired" or "quota" move to the next.
+export const FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3-flash", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
 const RETIRED = /no longer available|not found|is not supported|not available|deprecated|unknown model/i;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function research({ key, model, url, notes }) {
+export async function research({ key, model, url, notes, onStatus = () => {}, wait = sleep }) {
   url = normalizeUrl(url);
   notes = String(notes || "").slice(0, 8000);
   if (!url && notes.trim().length < 3) throw new Error("Paste a website or some details first.");
 
   const models = [...new Set([model, ...FALLBACK_MODELS].filter(Boolean))];
-  let lastErr;
-  for (const m of models) {
-    try {
-      return { ...(await callModel({ key, model: m, url, notes })), model: m };
-    } catch (e) {
-      lastErr = e;
-      if (e.cause !== "retired") throw e;
+  let quotaHit = false, lastErr;
+
+  // Pass 1: full research (website + Google Search). Pass 2: website only,
+  // which uses a separate, larger quota than search grounding.
+  for (const search of [true, false]) {
+    for (const m of models) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const out = await callModel({ key, model: m, url, notes, search });
+          return { ...out, model: m, searched: search };
+        } catch (e) {
+          lastErr = e;
+          if (e.cause === "retired") break;
+          if (e.cause === "quota") {
+            quotaHit = true;
+            // Short per-minute limit: wait once and retry the same model.
+            if (attempt === 0 && e.retryMs && e.retryMs <= 20000) {
+              onStatus(`Busy. Retrying in ${Math.ceil(e.retryMs / 1000)}s…`);
+              await wait(e.retryMs);
+              continue;
+            }
+            break;
+          }
+          throw e;
+        }
+      }
     }
+    if (!url) break;
   }
+  if (quotaHit) throw new Error("The free Gemini quota is used up for now. Try again in a few minutes. To stop this, turn on billing for the key in Google AI Studio (costs cents per check).");
   throw new Error("No Gemini model is available for this key. " + (lastErr?.message || ""));
 }
 
-async function callModel({ key, model, url, notes }) {
-  const tools = [{ google_search: {} }];
+async function callModel({ key, model, url, notes, search = true }) {
+  const tools = [];
+  if (search) tools.push({ google_search: {} });
   if (url) tools.push({ url_context: {} });
 
   let res;
@@ -74,7 +97,7 @@ async function callModel({ key, model, url, notes }) {
       headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: buildPrompt({ url, notes }) }] }],
-        tools,
+        ...(tools.length ? { tools } : {}),
       }),
       signal: AbortSignal.timeout(90000),
     });
@@ -86,7 +109,11 @@ async function callModel({ key, model, url, notes }) {
   if (!res.ok) {
     const msg = data?.error?.message || `Gemini error ${res.status}`;
     if (res.status === 404 || RETIRED.test(msg)) throw new Error(msg, { cause: "retired" });
-    if (res.status === 429) throw new Error("Gemini rate limit hit. Wait a minute and retry.");
+    if (res.status === 429 || /quota|rate limit|resource.?exhausted/i.test(msg)) {
+      const delay = (data?.error?.details || []).find((d) => d.retryDelay)?.retryDelay;
+      const secs = delay ? parseFloat(delay) : null;
+      throw Object.assign(new Error(msg, { cause: "quota" }), { retryMs: /limit: 0/.test(msg) ? null : secs ? secs * 1000 : null });
+    }
     if (res.status === 400 && /API key/i.test(msg)) throw new Error("The Gemini API key is invalid.", { cause: "badKey" });
     if (res.status === 403) throw new Error("The Gemini key refused this site. Check the key's website restriction includes this page's address.", { cause: "badKey" });
     throw new Error(msg);
