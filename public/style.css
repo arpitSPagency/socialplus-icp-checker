@@ -70,3 +70,7 @@ button.ghost { background: transparent; color: var(--ink); border: 1px solid var
   .badge { width: 60px; height: 60px; font-size: 32px; }
   .extra { grid-template-columns: 1fr; }
 }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions .ghost { margin-top: 0; }
+.small { font-size: 13px; margin: 10px 0 0; }
+.small a { color: var(--ink); }

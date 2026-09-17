@@ -12,11 +12,29 @@ let facts = null;
 let sources = [];
 
 // Key comes from the deployed config. If none was deployed, each visitor can use their own.
+// A visitor's own free key (saved in their browser) wins over the shared one,
+// so heavy users don't eat the team's free quota.
 const builtInKey = GEMINI_API_KEY;
-if (!builtInKey) {
+const ownKey = store.get("icp-gemini-key") || "";
+if (!builtInKey || ownKey) {
   $("codeRow").classList.remove("hidden");
-  $("code").value = store.get("icp-gemini-key") || "";
+  $("code").value = ownKey;
 }
+$("ownKey").addEventListener("click", (e) => {
+  e.preventDefault();
+  $("codeRow").classList.remove("hidden");
+  $("code").focus();
+});
+
+const EMPTY = { company: "", hq_country: null, employees_min: null, employees_max: null, funding_usd: null, segment: "", segment_fit: true, tiny_operation: false, low_budget: false };
+function manual() {
+  const url = $("url").value.trim();
+  facts = { ...EMPTY, company: url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "Manual entry", website: url || null, notes: "Entered by hand. Fill in country and headcount." };
+  sources = [];
+  fillFacts(); render();
+  document.querySelector('[data-f="hq_country"]').focus();
+}
+$("manual").addEventListener("click", () => { status(""); manual(); });
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -30,18 +48,23 @@ $("form").addEventListener("submit", async (e) => {
   var timer = setInterval(() => status(steps[Math.min(++i, steps.length - 1)]), 5000);
 
   try {
-    const key = builtInKey || $("code").value.trim();
+    const key = $("code").value.trim() || builtInKey;
     if (!key) { $("code").focus(); throw new Error("Add a Gemini API key first."); }
     const data = await research({ key, model: GEMINI_MODEL, url, notes, onStatus: (m) => { clearInterval(timer); status(m); } });
     if (!data.searched) sources = [];
-    if (!builtInKey) store.set("icp-gemini-key", key);
+    if ($("code").value.trim()) store.set("icp-gemini-key", $("code").value.trim());
     facts = data.facts; sources = data.sources || [];
     if (!data.searched) facts.notes = [facts.notes, "Google Search quota was busy, so this used the website only. Double-check headcount and funding."].filter(Boolean).join(" ");
     fillFacts(); render();
     status("");
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
-    status(err.message, true);
+    if (/quota|rate limit|busy|took too long|reach Gemini/i.test(err.message)) {
+      manual();
+      status("The free AI lookup is busy right now. Fill in the facts below and the tier appears instantly.", true);
+    } else {
+      status(err.message, true);
+    }
   } finally {
     clearInterval(timer); $("go").disabled = false;
   }

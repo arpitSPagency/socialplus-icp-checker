@@ -30,8 +30,12 @@
         <input id="code" name="code" type="password" placeholder="AIza…">
       </div>
 
-      <button id="go" type="submit">Check tier</button>
+      <div class="actions">
+        <button id="go" type="submit">Check tier</button>
+        <button id="manual" type="button" class="ghost">Enter facts myself</button>
+      </div>
       <p id="status" class="status" role="status"></p>
+      <p class="muted small">Free AI lookups are limited per minute and per day. If they run out, use <b>Enter facts myself</b>. Rules give the tier instantly, no AI needed. <a href="#" id="ownKey">Use my own free Gemini key</a></p>
     </form>
 
     <section id="result" class="hidden" aria-live="polite">
