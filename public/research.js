@@ -28,6 +28,8 @@ Return ONLY a JSON object, no prose, no code fences:
   "employees_source": string|null (e.g. "LinkedIn band 11-50"),
   "funding_usd": number|null (total raised in USD; null if bootstrapped/unknown),
   "last_round": string|null (e.g. "Seed, Mar 2025"),
+  "last_round_stage": "pre-seed"|"seed"|"series"|null (series = Series A/B/C or later),
+  "last_round_date": string|null (YYYY-MM of the most recent round; null if unknown),
   "segment": string (short label),
   "segment_fit": boolean (true if SaaS, AI-native, DTC/e-commerce, hospitality, real estate, health/fintech, or B2B services),
   "tiny_operation": boolean (true ONLY if clearly a solo founder/freelancer/1-5 person shop, or purely transactional one-off need),

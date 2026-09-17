@@ -97,3 +97,27 @@ test("short rate limit waits and retries same model", async () => {
     assert.equal(r.facts.company, "Z"); assert.equal(waited, 3000); assert.equal(n, 2); assert.ok(r.searched);
   } finally { globalThis.fetch = real; }
 });
+
+const TODAY = new Date(2026, 8, 17);
+const tf = (over) => evaluate({ ...base, ...over }, TODAY);
+test("seed → A even at 51–200", () => assert.equal(tf({ employees_min: 51, employees_max: 200, last_round: "Seed, Jan 2023" }).tier, "A"));
+test("pre-seed → A", () => assert.equal(tf({ last_round_stage: "pre-seed" }).tier, "A"));
+test("recent Series → A even at 51–200", () => {
+  const v = tf({ employees_min: 51, employees_max: 200, last_round_stage: "series", last_round_date: "2026-03" });
+  assert.equal(v.tier, "A"); assert.match(v.label, /Recent Series/);
+});
+test("old Series → B even at 11–50", () => assert.equal(tf({ last_round: "Series B, Mar 2024" }).tier, "B"));
+test("Series, date unknown → B with flag", () => {
+  const v = tf({ last_round_stage: "series" }); assert.equal(v.tier, "B"); assert.match(v.flags.join(), /date unknown/);
+});
+test("exactly 12 months → A, 13 → B", () => {
+  assert.equal(tf({ last_round_stage: "series", last_round_date: "2025-09" }).tier, "A");
+  assert.equal(tf({ last_round_stage: "series", last_round_date: "2025-08" }).tier, "B");
+});
+test("manual stage overrides AI text", () => assert.equal(tf({ last_round: "Seed, 2024", last_round_stage: "series", last_round_date: "2023-01" }).tier, "B"));
+test("seed with unknown headcount → A, not provisional", () => {
+  const v = tf({ employees_min: null, employees_max: null, last_round_stage: "seed" });
+  assert.equal(v.tier, "A"); assert.doesNotMatch(v.label, /Provisional/);
+});
+test("India seed still C", () => assert.equal(tf({ hq_country: "India", last_round_stage: "seed" }).tier, "C"));
+test("seed but tiny op → D", () => assert.equal(tf({ last_round_stage: "seed", tiny_operation: true }).tier, "D"));

@@ -22,7 +22,7 @@ h2 .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .sub, .muted { color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
 label { display: block; font-weight: 500; margin: 0 0 6px; }
-input[type=text], input[type=number], input[type=password], textarea {
+input[type=text], input[type=number], input[type=password], input[type=month], select, textarea {
   width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
   border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;
 }
@@ -74,3 +74,6 @@ button.ghost { background: transparent; color: var(--ink); border: 1px solid var
 .actions .ghost { margin-top: 0; }
 .small { font-size: 13px; margin: 10px 0 0; }
 .small a { color: var(--ink); }
+.grid select, .grid input[type=month] { margin-top: 4px; }
+.guide ul ul { margin: 4px 0 2px; padding-left: 18px; }
+.guide ul ul li { margin-bottom: 2px; }

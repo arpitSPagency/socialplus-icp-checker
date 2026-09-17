@@ -61,7 +61,45 @@ export function fmtUSD(n) {
   return `$${n}`;
 }
 
-export function evaluate(f) {
+// Funding stage (set by Arpit, 17 Sep 2026):
+//   Pre-seed / Seed      → Tier A (dream fit)
+//   Series A, B, C…      → Tier A if the round is recent (last 12 months), else Tier B
+// A known stage beats the headcount bands. Headcount decides only when no round is known.
+export const RECENT_MONTHS = 12;
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+
+export function stageOf(f) {
+  const t = (f.last_round_stage ? String(f.last_round_stage) : String(f.last_round || "")).toLowerCase();
+  if (/pre[\s-]?seed/.test(t)) return "pre-seed";
+  if (/\bseed\b|angel/.test(t)) return "seed";
+  if (/series\s*[a-z]\b|series/.test(t)) return "series";
+  return null;
+}
+
+// Months since the last round, from last_round_date ("2025-03" / "2025-03-14")
+// or a month/year inside last_round ("Series A, Mar 2025"). null if unknown.
+export function roundAgeMonths(f, today = new Date()) {
+  let y, m = 6;
+  const d = String(f.last_round_date || "").match(/(\d{4})(?:-(\d{1,2}))?/);
+  if (d) { y = +d[1]; if (d[2]) m = +d[2]; }
+  else {
+    const t = String(f.last_round || "").toLowerCase();
+    const ym = t.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{4})/);
+    const yo = t.match(/\b(20\d{2})\b/);
+    if (ym) { m = MONTHS[ym[1]]; y = +ym[2]; } else if (yo) y = +yo[1];
+  }
+  if (!y) return null;
+  return (today.getFullYear() - y) * 12 + (today.getMonth() + 1 - m);
+}
+
+function roundText(f) {
+  const st = stageOf(f);
+  const name = f.last_round || (st ? st[0].toUpperCase() + st.slice(1) : "");
+  const date = f.last_round_date && !String(f.last_round || "").includes(String(f.last_round_date).slice(0, 4)) ? ` · ${f.last_round_date}` : "";
+  return name + date;
+}
+
+export function evaluate(f, today = new Date()) {
   const flags = [];
   const checks = [];
   const geo = geoOf(f.hq_country);
@@ -69,6 +107,9 @@ export function evaluate(f) {
   const raised = num(f.funding_usd);
   const tiny = f.tiny_operation === true;
   const lowBudget = f.low_budget === true;
+  const stage = stageOf(f);
+  const age = roundAgeMonths(f, today);
+  const recent = age != null && age <= RECENT_MONTHS;
 
   checks.push({
     param: "Geography",
@@ -84,9 +125,11 @@ export function evaluate(f) {
   });
   checks.push({
     param: "Funding",
-    value: raised == null ? "Unknown / bootstrapped" : fmtUSD(raised) + (f.last_round ? ` (${f.last_round})` : ""),
-    pass: raised == null ? null : raised >= 1e6,
-    note: raised == null ? "Not a blocker on its own" : raised >= 1e6 ? "$1M+ raised" : "Under $1M raised",
+    value: [raised != null && fmtUSD(raised), roundText(f)].filter(Boolean).join(" · ") || "Unknown / bootstrapped",
+    pass: stage ? true : raised == null ? null : raised >= 1e6,
+    note: stage === "pre-seed" || stage === "seed" ? "Seed / pre-seed → dream fit, Tier A"
+      : stage === "series" ? (recent ? `Recent Series round (${age} mo ago) → Tier A` : age != null ? `Series round ${age} mo ago → Tier B` : "Series round, date unknown → Tier B")
+      : raised == null ? "No round found. Headcount decides" : raised >= 1e6 ? "$1M+ raised, stage unknown. Headcount decides" : "Under $1M raised, stage unknown. Headcount decides",
   });
   checks.push({
     param: "Segment",
@@ -114,23 +157,28 @@ export function evaluate(f) {
   }
 
   // 3. International.
-  let tier = null;
-  if (emp == null) {
+  let tier = null, basis = null;
+  if (stage === "pre-seed" || stage === "seed") { tier = "A"; basis = stage === "seed" ? "Seed" : "Pre-seed"; }
+  else if (stage === "series") {
+    tier = recent ? "A" : "B"; basis = recent ? "Recent Series round" : "Series round";
+    if (age == null) flags.push("Series round date unknown. Treated as B. If it closed in the last 12 months, set the date and it becomes A.");
+  } else if (emp == null) {
     tier = raised != null && raised >= 1e6 ? "A" : null;
     flags.push(tier ? "Headcount unconfirmed. Provisional A on funding alone. Confirm size before outreach." : "Headcount unconfirmed. Add it below to get a tier.");
-  } else if (emp <= 50) tier = "A";
-  else tier = "B";
+  } else if (emp <= 50) { tier = "A"; basis = "up to 50"; }
+  else { tier = "B"; basis = "51–200"; }
+  if (stage && emp == null) flags.push("Headcount unconfirmed. Check it isn't a 1–5 person operation.");
 
-  if (emp != null && emp > 200) flags.push("Above profile (200+ employees). Still worked as B, but needs Nikita's sign-off. Pitch specialist value, not capacity.");
+  if (emp != null && emp > 200) flags.push(`Above profile (200+ employees). Still worked as ${tier}, but needs Nikita's sign-off. Pitch specialist value, not capacity.`);
   if (geo === "other") flags.push(`Outside the target markets (${f.hq_country}). Borderline. Escalate to Nikita.`);
   if (geo === "unknown") flags.push("HQ country unconfirmed. Add it below.");
   if (f.segment_fit === false) flags.push("Segment is outside the core list. Borderline. Escalate to Nikita.");
   if (f.confidence === "low") flags.push("The research came back low confidence. Double-check the facts below.");
 
-  if (!tier || geo === "unknown" || emp == null) {
+  if (!tier || geo === "unknown" || (emp == null && !stage)) {
     return result(tier, tier ? `Provisional ${tier}` : "Needs info", "Fill in the missing facts below. The tier updates instantly.", flags, checks);
   }
-  const label = tier === "A" ? "International · up to 50" : "International · 51–200";
+  const label = `International · ${basis}`;
   return result(tier, label, flags.length ? "Qualified, with flags. Check them before outreach." : "Qualified. Pursue.", flags, checks);
 }
 

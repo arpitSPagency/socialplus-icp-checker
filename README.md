@@ -10,12 +10,12 @@ A one-page tool, hosted free on GitHub Pages. Paste a company website plus any e
 
 | Tier | Rule | Action |
 |---|---|---|
-| **A** | US / UK / Canada / Australia / UAE / EU, up to 50 employees | Pursue |
-| **B** | Same markets, 51–200 employees (200+ = above profile → Nikita sign-off) | Pursue |
+| **A** | US / UK / Canada / Australia / UAE / EU **and** Pre-seed/Seed funded, **or** a Series round in the last 12 months, **or** (no known round) up to 50 employees | Pursue |
+| **B** | Same markets **and** a Series round older than 12 months, **or** (no known round) 51–200 employees. 200+ = above profile → Nikita sign-off | Pursue |
 | **C** | India | India approach |
 | **D** | 1–5 person op, transactional, no strategy, or budget < $500/mo (₹40K) | Decline politely, never chase |
 
-Rules are checked in order: **D first** (any country), then **India → C**, then the international size bands. These go to Nikita as borderline: countries outside the list, non-core segments, and unconfirmed headcount or HQ.
+Rules are checked in order: **D first** (any country), then **India → C**, then funding stage (a known round beats headcount), then the international size bands. These go to Nikita as borderline: countries outside the list, non-core segments, and unconfirmed headcount or HQ.
 
 To change a rule, edit `public/tiers.js`, run `npm test`, and push.
 

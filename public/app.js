@@ -26,7 +26,7 @@ $("ownKey").addEventListener("click", (e) => {
   $("code").focus();
 });
 
-const EMPTY = { company: "", hq_country: null, employees_min: null, employees_max: null, funding_usd: null, segment: "", segment_fit: true, tiny_operation: false, low_budget: false };
+const EMPTY = { company: "", last_round_stage: null, last_round_date: null, hq_country: null, employees_min: null, employees_max: null, funding_usd: null, segment: "", segment_fit: true, tiny_operation: false, low_budget: false };
 function manual() {
   const url = $("url").value.trim();
   facts = { ...EMPTY, company: url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "Manual entry", website: url || null, notes: "Entered by hand. Fill in country and headcount." };
@@ -75,6 +75,8 @@ document.querySelectorAll("#facts [data-f]").forEach((el) => {
     if (!facts) return;
     const k = el.dataset.f;
     facts[k] = el.type === "checkbox" ? el.checked : el.value === "" ? null : el.value;
+    // A hand-picked round replaces the AI's free-text round description.
+    if (k === "last_round_stage" || k === "last_round_date") facts.last_round = null;
     render();
   });
 });

@@ -65,6 +65,15 @@
           <label>Employees (min)<input data-f="employees_min" type="number" min="0"></label>
           <label>Employees (max)<input data-f="employees_max" type="number" min="0"></label>
           <label>Total raised (USD)<input data-f="funding_usd" type="number" min="0" step="100000"></label>
+          <label>Last round
+            <select data-f="last_round_stage">
+              <option value="">None / unknown</option>
+              <option value="pre-seed">Pre-seed</option>
+              <option value="seed">Seed</option>
+              <option value="series">Series A / B / C+</option>
+            </select>
+          </label>
+          <label>Round date<input data-f="last_round_date" type="month"></label>
           <label>Segment<input data-f="segment" type="text"></label>
           <label class="check"><input data-f="segment_fit" type="checkbox"> Core segment</label>
           <label class="check"><input data-f="tiny_operation" type="checkbox"> 1–5 person / transactional</label>
@@ -83,10 +92,24 @@
     <details class="card guide">
       <summary>Tier guide</summary>
       <ul>
-        <li><b>Tier A:</b> US, UK, Canada, Australia, UAE or EU, with up to 50 employees. Core segments: SaaS, AI-native, DTC/e-commerce, hospitality, real estate, health/fintech, B2B.</li>
-        <li><b>Tier B:</b> same markets, 51–200 employees. Over 200 is still B, but it's above profile and needs Nikita's sign-off.</li>
+        <li><b>Tier A:</b> US, UK, Canada, Australia, UAE or EU, and one of these:
+          <ul>
+            <li><b>Pre-seed or Seed</b> funded: the dream fit.</li>
+            <li><b>Recent Series round</b> (A, B, C…) closed in the last 12 months.</li>
+            <li>No known round, and up to 50 employees.</li>
+          </ul>
+        </li>
+        <li><b>Tier B:</b> same markets, and one of these:
+          <ul>
+            <li><b>Series round</b> older than 12 months: still worth going for.</li>
+            <li>No known round, and 51–200 employees.</li>
+          </ul>
+          Over 200 employees stays in its tier but is above profile and needs Nikita's sign-off.
+        </li>
         <li><b>Tier C:</b> India.</li>
         <li><b>Tier D:</b> decline politely and never chase. That means a 1–5 person operation, no strategy, a transactional ask, or a budget under $500/mo (₹40K).</li>
+        <li><b>Funding beats headcount.</b> When a round is known, it decides A or B. Headcount only decides when there's no funding info.</li>
+        <li><b>Core segments:</b> SaaS, AI-native, DTC/e-commerce, hospitality, real estate, health/fintech, B2B.</li>
         <li>Borderline cases go to Nikita: other countries, non-core segments, or unconfirmed facts.</li>
       </ul>
       <p class="muted">Research is AI-assisted and can be wrong. Check the facts before outreach.</p>
