@@ -43,7 +43,7 @@ $("form").addEventListener("submit", async (e) => {
   if (!url && !notes) return status("Paste a website or some details first.", true);
 
   $("go").disabled = true;
-  const steps = ["Reading the website…", "Searching LinkedIn, Crunchbase and press…", "Checking headcount and funding…", "Almost there…"];
+  const steps = ["Searching the web…", "Reading LinkedIn, funding pages and press…", "Checking headcount and funding…", "Almost there…"];
   let i = 0; status(steps[0]);
   var timer = setInterval(() => status(steps[Math.min(++i, steps.length - 1)]), 5000);
 
@@ -51,15 +51,16 @@ $("form").addEventListener("submit", async (e) => {
     const key = $("code").value.trim() || builtInKey;
     if (!key) { $("code").focus(); throw new Error("Add a Gemini API key first."); }
     const data = await research({ key, model: GEMINI_MODEL, url, notes, onStatus: (m) => { clearInterval(timer); status(m); } });
-    if (!data.searched) sources = [];
     if ($("code").value.trim()) store.set("icp-gemini-key", $("code").value.trim());
     facts = data.facts; sources = data.sources || [];
-    if (!data.searched) facts.notes = [facts.notes, "Google Search quota was busy, so this used the website only. Double-check headcount and funding."].filter(Boolean).join(" ");
+    // No LinkedIn/funding pages could be fetched and no search grounding ran:
+    // whatever numbers came back are from the website or the model's memory.
+    if (!data.evidence && data.mode !== "grounded") facts.notes = [facts.notes, "Couldn't fetch LinkedIn or funding pages this time, so headcount and funding may be from the AI's memory. Double-check them."].filter(Boolean).join(" ");
     fillFacts(); render();
     status("");
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
-    if (/quota|rate limit|busy|took too long|reach Gemini/i.test(err.message)) {
+    if (/quota|rate limit|busy|took too long|reach Gemini|No Gemini model/i.test(err.message)) {
       manual();
       status("The free AI lookup is busy right now. Fill in the facts below and the tier appears instantly.", true);
     } else {
@@ -130,6 +131,7 @@ function render() {
     ["City", facts.hq_city],
     ["Headcount source", facts.employees_source],
     ["Last round", facts.last_round],
+    ["Funding source", facts.funding_source],
     ["Raised", facts.funding_usd ? fmtUSD(facts.funding_usd) : null],
     ["Decision makers", (facts.decision_makers || []).map((d) => `${d.name} (${d.title})`).join(", ")],
     ["Buying triggers", (facts.buying_triggers || []).join(" · ")],

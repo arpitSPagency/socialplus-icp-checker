@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluate } from "../public/tiers.js";
 import { parseJson, normalizeUrl, buildPrompt } from "../public/research.js";
+import { ddgLinks, searchDigest, personIn, gather } from "../public/gather.js";
+
+// Research tests stub the browser-side evidence gathering so the mocked fetch
+// only ever sees Gemini calls.
+const NO_EVIDENCE = async () => ({ material: [], sources: [] });
+const EVIDENCE = async () => ({ material: [{ title: "LinkedIn", url: "https://www.linkedin.com/company/x", text: "Company size 11-50 employees" }], sources: [{ title: "LinkedIn", uri: "https://www.linkedin.com/company/x" }] });
 
 const base = { hq_country: "United States", employees_min: 11, employees_max: 50, funding_usd: 3e6, segment: "SaaS", segment_fit: true, tiny_operation: false, low_budget: false };
 const t = (over) => evaluate({ ...base, ...over });
@@ -41,9 +47,10 @@ test("normalizeUrl", () => {
   assert.equal(normalizeUrl("acme.com"), "https://acme.com/");
   assert.equal(normalizeUrl("hello"), null);
 });
-test("prompt includes url and notes", () => {
-  const p = buildPrompt({ url: "https://acme.com/", notes: "Founder Jane" });
-  assert.match(p, /acme\.com/); assert.match(p, /Founder Jane/);
+test("prompt includes url, notes and evidence", () => {
+  const p = buildPrompt({ url: "https://acme.com/", notes: "Founder Jane", material: [{ title: "LinkedIn", url: "https://linkedin.com/company/acme", text: "Company size 11-50" }] });
+  assert.match(p, /acme\.com/); assert.match(p, /Founder Jane/); assert.match(p, /EVIDENCE/); assert.match(p, /Company size 11-50/);
+  assert.doesNotMatch(buildPrompt({ url: "https://acme.com/" }), /EVIDENCE/);
 });
 
 test("research falls back when a model is retired", async () => {
@@ -57,7 +64,7 @@ test("research falls back when a model is retired", async () => {
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"X","hq_country":"India"}' }] } }] }), { status: 200 });
   };
   try {
-    const r = await research({ key: "k", model: "gemini-2.5-flash", url: "x.com" });
+    const r = await research({ key: "k", model: "gemini-2.5-flash", url: "x.com", gatherFn: NO_EVIDENCE });
     assert.equal(r.facts.company, "X");
     assert.deepEqual(tried, ["gemini-2.5-flash", "gemini-3.6-flash"]);
   } finally { globalThis.fetch = real; }
@@ -66,25 +73,102 @@ test("research does not retry on a bad key", async () => {
   const { research } = await import("../public/research.js");
   let n = 0; const real = globalThis.fetch;
   globalThis.fetch = async () => { n++; return new Response(JSON.stringify({ error: { message: "API key not valid" } }), { status: 400 }); };
-  try { await assert.rejects(research({ key: "k", url: "x.com" }), /invalid/); assert.equal(n, 1); }
+  try { await assert.rejects(research({ key: "k", url: "x.com", gatherFn: NO_EVIDENCE }), /invalid/); assert.equal(n, 1); }
   finally { globalThis.fetch = real; }
 });
 
-test("quota on one model falls through to the next", async () => {
+test("evidence goes to the model first; grounding is only a fallback", async () => {
+  const { research } = await import("../public/research.js");
+  const calls = []; const real = globalThis.fetch;
+  globalThis.fetch = async (u, o) => {
+    const body = JSON.parse(o.body);
+    calls.push({ search: !!body.tools?.some((t) => t.google_search), evidence: /EVIDENCE/.test(body.contents[0].parts[0].text) });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"Y","sources":[{"title":"Press","url":"https://press.example/a"},{"title":"DDG","url":"https://html.duckduckgo.com/html/?q=x"}]}' }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "y.com", gatherFn: EVIDENCE });
+    assert.equal(r.facts.company, "Y"); assert.equal(r.mode, "web"); assert.equal(r.evidence, 1);
+    assert.deepEqual(calls, [{ search: false, evidence: true }]);
+    assert.deepEqual(r.sources.map((s) => s.uri), ["https://www.linkedin.com/company/x", "https://press.example/a"]);
+    assert.equal(r.facts.sources, undefined);
+  } finally { globalThis.fetch = real; }
+});
+test("quota on every model in web mode falls through to grounded, then site", async () => {
   const { research } = await import("../public/research.js");
   const tried = []; const real = globalThis.fetch;
   globalThis.fetch = async (u, o) => {
     const m = decodeURIComponent(String(u).match(/models\/([^:]+):/)[1]);
-    const search = JSON.parse(o.body).tools?.some((t) => t.google_search);
-    tried.push(m + (search ? "+s" : ""));
-    if (search) return new Response(JSON.stringify({ error: { message: "Quota exceeded, limit: 0", details: [{ retryDelay: "5s" }] } }), { status: 429 });
+    const body = JSON.parse(o.body);
+    const mode = body.tools?.some((t) => t.google_search) ? "grounded" : /EVIDENCE/.test(body.contents[0].parts[0].text) ? "web" : "site";
+    tried.push(m + ":" + mode);
+    if (mode !== "site") return new Response(JSON.stringify({ error: { message: "Quota exceeded, limit: 0" } }), { status: 429 });
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"Y"}' }] } }] }), { status: 200 });
   };
   try {
-    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "y.com", wait: async () => {} });
-    assert.equal(r.facts.company, "Y"); assert.equal(r.searched, false);
-    assert.equal(tried[0], "gemini-3.6-flash+s"); assert.equal(tried.at(-1), "gemini-3.6-flash");
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "y.com", wait: async () => {}, gatherFn: EVIDENCE });
+    assert.equal(r.facts.company, "Y"); assert.equal(r.mode, "site"); assert.equal(r.searched, false);
+    assert.equal(tried[0], "gemini-3.6-flash:web"); assert.ok(tried.includes("gemini-3.6-flash:grounded")); assert.equal(tried.at(-1), "gemini-3.6-flash:site");
   } finally { globalThis.fetch = real; }
+});
+test("a 503 moves on to the next model instead of failing", async () => {
+  const { research } = await import("../public/research.js");
+  const tried = []; let waited = 0; const real = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    const m = decodeURIComponent(String(u).match(/models\/([^:]+):/)[1]);
+    tried.push(m);
+    if (m === "gemini-3.6-flash") return new Response(JSON.stringify({ error: { message: "The service is currently unavailable." } }), { status: 503 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"W"}' }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "w.com", wait: async (ms) => { waited += ms; }, gatherFn: NO_EVIDENCE });
+    assert.equal(r.facts.company, "W"); assert.equal(r.model, "gemini-3-flash-preview");
+    assert.deepEqual(tried, ["gemini-3.6-flash", "gemini-3.6-flash", "gemini-3-flash-preview"]); assert.ok(waited > 0);
+  } finally { globalThis.fetch = real; }
+});
+test("a failed gather still produces a result", async () => {
+  const { research } = await import("../public/research.js");
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"V"}' }] } }] }), { status: 200 });
+  try {
+    const r = await research({ key: "k", url: "v.com", gatherFn: async () => { throw new Error("reader down"); } });
+    assert.equal(r.facts.company, "V"); assert.equal(r.evidence, 0);
+  } finally { globalThis.fetch = real; }
+});
+
+const DDG_MD = `[Cal.com | LinkedIn](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fcal%2Dcom%2F&rut=abc)
+Cal.com | 5,000 followers. Company size 11-50 employees.
+[![Image 3](https://external-content.duckduckgo.com/ip3/x.ico)](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fcal%2Dcom%2F&rut=abc)
+[Cal.com Funding | StartupIntros](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fstartupintros.com%2Forgs%2Fcal%2Dcom&rut=def)
+[Cal.com - Crunchbase](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.crunchbase.com%2Forganization%2Fcal%2Dcom&rut=ghi)`;
+test("ddgLinks decodes result targets and drops duplicates and icons", () => {
+  assert.deepEqual(ddgLinks(DDG_MD), [
+    { title: "Cal.com | LinkedIn", href: "https://www.linkedin.com/company/cal-com/" },
+    { title: "Cal.com Funding | StartupIntros", href: "https://startupintros.com/orgs/cal-com" },
+    { title: "Cal.com - Crunchbase", href: "https://www.crunchbase.com/organization/cal-com" },
+  ]);
+});
+test("searchDigest keeps titles, snippets and real targets", () => {
+  const d = searchDigest(DDG_MD);
+  assert.match(d, /Cal\.com \| LinkedIn <https:\/\/www\.linkedin\.com\/company\/cal-com\/>/);
+  assert.match(d, /Company size 11-50/); assert.doesNotMatch(d, /duckduckgo\.com\/l\//); assert.doesNotMatch(d, /Image 3/);
+});
+test("personIn finds a named founder in notes", () => {
+  assert.equal(personIn("Founder: Jane Doe, ex-Stripe"), "Jane Doe");
+  assert.equal(personIn("nothing here"), null);
+});
+test("gather opens LinkedIn first, skips blocked hosts, quotes the domain", async () => {
+  const fetched = [];
+  const fetchText = async (u) => { fetched.push(u); return /duckduckgo/.test(u) ? DDG_MD : "Company size 11-50 employees. Headquarters San Francisco. ".repeat(10); };
+  const r = await gather({ url: "https://cal.com/", notes: "", fetchText });
+  assert.match(fetched[0], /%22cal\.com%22/);
+  assert.deepEqual(fetched.filter((u) => !/duckduckgo/.test(u)), ["https://www.linkedin.com/company/cal-com/", "https://startupintros.com/orgs/cal-com"]);
+  assert.equal(r.material[0].url, "https://www.linkedin.com/company/cal-com/");
+  assert.equal(r.sources.length, 2);
+  assert.ok(r.material.some((m) => /^Search results:/.test(m.title)));
+});
+test("gather survives a dead reader", async () => {
+  const r = await gather({ url: "https://cal.com/", notes: "", fetchText: async () => { throw new Error("429"); } });
+  assert.deepEqual(r, { material: [], sources: [] });
 });
 test("short rate limit waits and retries same model", async () => {
   const { research } = await import("../public/research.js");
@@ -93,7 +177,7 @@ test("short rate limit waits and retries same model", async () => {
     ? new Response(JSON.stringify({ error: { message: "Resource exhausted", details: [{ retryDelay: "3s" }] } }), { status: 429 })
     : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"company":"Z"}' }] } }] }), { status: 200 }));
   try {
-    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "z.com", wait: async (ms) => { waited = ms; } });
+    const r = await research({ key: "k", model: "gemini-3.6-flash", url: "z.com", wait: async (ms) => { waited = ms; }, gatherFn: NO_EVIDENCE });
     assert.equal(r.facts.company, "Z"); assert.equal(waited, 3000); assert.equal(n, 2); assert.ok(r.searched);
   } finally { globalThis.fetch = real; }
 });
