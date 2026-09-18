@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluate } from "../public/tiers.js";
 import { parseJson, normalizeUrl, buildPrompt } from "../public/research.js";
-import { mdLinks, unwrap, searchDigest, personIn, linkedinSlug, guessSlugs, gather } from "../public/gather.js";
+import { mdLinks, unwrap, searchDigest, personIn, linkedinSlug, guessSlugs, gather, companyName, hasHeadcount } from "../public/gather.js";
 
 // Research tests stub the browser-side evidence gathering so the mocked fetch
 // only ever sees Gemini calls.
@@ -212,7 +212,68 @@ test("gather guesses the LinkedIn slug and falls back to DuckDuckGo, skipping a 
 });
 test("gather survives a dead reader", async () => {
   const r = await gather({ url: "https://cal.com/", notes: "", fetchText: async () => { throw new Error("429"); } });
-  assert.deepEqual(r, { material: [], sources: [], linkedin: null });
+  assert.deepEqual(r, { material: [], sources: [], linkedin: null, name: "Cal" });
+});
+test("companyName: domain match, then stem match, then copyright, then shortest title segment", () => {
+  assert.equal(companyName({ title: "Cal.com | Scheduling Software for Online Bookings", host: "cal.com" }), "Cal.com");
+  assert.equal(companyName({ title: "Hiya Health | Essential Super Nutrients for Kids", text: "© Hiya Health Products LLC 2026. All Rights Reserved", host: "hiyahealth.com" }), "Hiya Health");
+  assert.equal(companyName({ title: "Online Doctor Appointments, 24/7 | Maple", host: "getmaple.ca" }), "Maple");
+  assert.equal(companyName({ title: "", text: "© 2026 Acme Widgets, Inc. All rights reserved.", host: "acmew.io" }), "Acme Widgets");
+  assert.equal(companyName({ title: "Home", host: "acme.io" }), "Acme");
+});
+test("hasHeadcount spots bands and counts", () => {
+  assert.ok(hasHeadcount([{ text: "Company size 11-50 employees" }]));
+  assert.ok(hasHeadcount([{ text: "corporate office is in Florida and has 19 employees." }]));
+  assert.ok(!hasHeadcount([{ text: "We love our employees. Join the team." }]));
+});
+test("gather finds the LinkedIn page and headcount snippets by name when the site never links it", async () => {
+  const fetched = [];
+  const fetchText = async (u) => {
+    fetched.push(u);
+    if (u === "https://hiyahealth.com/") return "Kids vitamins. © Hiya Health Products LLC 2026. All Rights Reserved. ".repeat(10);
+    if (/linkedin\.com\/company\/hiyahealth(-com)?$/.test(u)) return "Page not found. ".repeat(20);
+    // The Australian physio shares the name; it never mentions hiyahealth.com.
+    if (/linkedin\.com\/company\/hiya-health$/.test(u)) return "Hiya Health | LinkedIn. Allied health, Queensland. Website hiya.health. Company size 51-200 employees. ".repeat(5);
+    if (/linkedin\.com\/company\/hiya-health-products$/.test(u)) return "Hiya Health Products | LinkedIn. Website hiyahealth.com. Company size 11-50 employees. ".repeat(5);
+    if (/duckduckgo.*employees/.test(u)) return [
+      "1.[Hiya Health - LinkedIn](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fhiya-health%2F)\nQueensland physio.\n",
+      "2.[Hiya Health Products: Employee Directory | ZoomInfo](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.zoominfo.com%2Fpic%2Fhiya-health-products%2F1)\n**Hiya Health** Products is located in West Palm Beach, Florida and has 19 **employees**.\n",
+      "3.[Hiya Health Products - LinkedIn](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fhiya-health-products%2F)\nKids vitamins.\n",
+    ].join("\n");
+    if (/bing\.com/.test(u)) return "";
+    throw new Error("unexpected " + u);
+  };
+  const r = await gather({ url: "https://hiyahealth.com/", notes: "", fetchText });
+  assert.equal(r.name, "Hiya Health Products", "no <title> in this double, so the copyright line names it");
+  assert.equal(r.linkedin, "https://www.linkedin.com/company/hiya-health-products", "the page that names the domain wins");
+  assert.ok(fetched.some((u) => /linkedin\.com\/company\/hiya-health$/.test(u)), "the namesake was checked and rejected");
+  assert.ok(!fetched.some((u) => /site%3Alinkedin/.test(u)), "no second search once LinkedIn is found");
+  assert.deepEqual(r.material.map((m) => m.title.split(":")[0]), ["Website", "LinkedIn", "Search results"]);
+  assert.match(r.material[2].text, /has 19 \*\*employees\*\*/);
+  assert.ok(!fetched.some((u) => /growjo/.test(u)), "Growjo is skipped once a headcount is in hand");
+});
+test("gather keeps a press page matched by name only when it mentions the domain", async () => {
+  const fetched = [];
+  const bing = [
+    "### [Maple - Wikipedia](https://en.wikipedia.org/wiki/Maple)\nA tree.\n",
+    "### [Maple raises $75M Series C - TechCrunch](https://techcrunch.com/maple-raises)\nThe telehealth company.\n",
+  ].join("\n");
+  const fetchText = async (u) => {
+    fetched.push(u);
+    if (u === "https://getmaple.ca/") return "Online doctors in Canada. ".repeat(20);
+    if (/linkedin/.test(u)) return "Maple | LinkedIn. getmaple.ca. Company size 201-500 employees. ".repeat(5);
+    if (/startupintros/.test(u)) return "";
+    if (/bing\.com\/search/.test(u)) return bing;
+    if (/bing\.com\/news/.test(u)) return "";
+    if (/wikipedia/.test(u)) return "Maple is a genus of trees. ".repeat(20);
+    if (/techcrunch/.test(u)) return "Maple (getmaple.ca) raised $75M. ".repeat(20);
+    throw new Error("unexpected " + u);
+  };
+  const r = await gather({ url: "https://getmaple.ca/", notes: "", fetchText, fetchPage: async (u) => ({ title: "Online Doctors | Maple", content: await fetchText(u) }) });
+  assert.equal(r.name, "Maple");
+  const titles = r.material.map((m) => m.title);
+  assert.ok(titles.some((t) => /TechCrunch/.test(t)), "press that names the domain is kept");
+  assert.ok(!titles.some((t) => /Wikipedia/.test(t)), "the tree is not the company");
 });
 test("short rate limit waits and retries same model", async () => {
   const { research } = await import("../public/research.js");

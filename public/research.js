@@ -23,6 +23,7 @@ HOW TO RESEARCH
 ${url ? `Read the website ${url} (home and About pages) first.` : ""}
 ${domain ? `The company is the one that owns ${domain}. The evidence was found by searching for that domain; if a page is clearly about a different company (different name, product or website), do not use it. If the website is only a placeholder or "launching soon" page, say so in notes and set confidence to "low".` : ""}
 Look for: the LinkedIn company page (employee band like "11-50", headquarters), funding databases and press for rounds, the About/Contact page for HQ, founders and marketing leaders, recent launches, funding, expansion or hiring for brand/marketing roles.
+Headcount: a LinkedIn "Company size" band is best. If there is none, use a stated count from a search snippet or database page (ZoomInfo "has 19 employees", Growjo, RocketReach, Datanyze, a team page with named staff) and name that source, e.g. "ZoomInfo: 19 employees". Only leave employees null when no page in the evidence states a number for this company.
 If the pasted notes name a founder or person, use them to identify the right company.
 Facts only. If you cannot find something, use null. Never guess a number.
 If a number comes only from your own memory rather than a page you read, say so in its source field and set confidence to "low".
